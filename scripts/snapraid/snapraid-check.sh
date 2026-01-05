@@ -20,38 +20,38 @@ source "$SETTINGS_FILE"
 
 function main()
 {
-	# create tmp file for output
-	true >"$TMP_OUTPUT"
+    # create tmp file for output
+    true >"$TMP_OUTPUT"
 
-	output_to_file_screen
+    output_to_file_screen
 
-	# timestamp the job
-	echo "SnapRAID Script Job started [$(date)]"
-	echo "Running SnapRAID version $SNAPRAIDVERSION"
-	echo "SnapRAID AIO Script version $SNAPSCRIPTVERSION"
-	echo "Using configuration file: $SETTINGS_FILE"
-	echo "----------------------------------------"
-	mklog "INFO: ----------------------------------------"
-	mklog "INFO: SnapRAID Script Job started"
-	mklog "INFO: Running SnapRAID version $SNAPRAIDVERSION"
-	mklog "INFO: SnapRAID Script version $SNAPSCRIPTVERSION"
-	mklog "INFO: Using configuration file: $SETTINGS_FILE"
+    # timestamp the job
+    echo "SnapRAID Script Job started [$(date)]"
+    echo "Running SnapRAID version $SNAPRAIDVERSION"
+    echo "SnapRAID AIO Script version $SNAPSCRIPTVERSION"
+    echo "Using configuration file: $SETTINGS_FILE"
+    echo "----------------------------------------"
+    mklog "INFO: ----------------------------------------"
+    mklog "INFO: SnapRAID Script Job started"
+    mklog "INFO: Running SnapRAID version $SNAPRAIDVERSION"
+    mklog "INFO: SnapRAID Script version $SNAPSCRIPTVERSION"
+    mklog "INFO: Using configuration file: $SETTINGS_FILE"
 
-	### Check if SnapRAID is already running
-	if pgrep -x snapraid >/dev/null; then
-		echo "The script has detected SnapRAID is already running. Please check the status of the previous SnapRAID job before running this script again."
-		mklog "WARN: The script has detected SnapRAID is already running. Please check the status of the previous SnapRAID job before running this script again."
-		SUBJECT="[WARNING] - SnapRAID already running $EMAIL_SUBJECT_PREFIX"
-		NOTIFY_OUTPUT="$SUBJECT"
-		notify_warning
-		if [ "$EMAIL_ADDRESS" ]; then
-			trim_log <"$TMP_OUTPUT" | send_mail
-		fi
-		exit 1
-	else
-		echo "SnapRAID is not running, proceeding."
-		mklog "INFO: SnapRAID is not running, proceeding."
-	fi
+    ### Check if SnapRAID is already running
+    if pgrep -x snapraid >/dev/null; then
+        echo "The script has detected SnapRAID is already running. Please check the status of the previous SnapRAID job before running this script again."
+        mklog "WARN: The script has detected SnapRAID is already running. Please check the status of the previous SnapRAID job before running this script again."
+        SUBJECT="[WARNING] - SnapRAID already running $EMAIL_SUBJECT_PREFIX"
+        NOTIFY_OUTPUT="$SUBJECT"
+        notify_warning
+        if [ "$EMAIL_ADDRESS" ]; then
+            trim_log <"$TMP_OUTPUT" | send_mail
+        fi
+        exit 1
+    else
+        echo "SnapRAID is not running, proceeding."
+        mklog "INFO: SnapRAID is not running, proceeding."
+    fi
 
   if [ "$RETENTION_DAYS" -gt 0 ]; then
     echo "SnapRAID output retention is enabled. Detailed logs will be kept in $SNAPRAID_LOG_DIR for $RETENTION_DAYS days."
@@ -76,10 +76,10 @@ function mklog() {
 
 # Redirects output to file and screen. Open a new tee process.
 function output_to_file_screen() {
-	# redirect all output to screen and file
-	exec {OUT}>&1 {ERROR}>&2
-	# NOTE: Not preferred format but valid: exec &> >(tee -ia "${TMP_OUTPUT}" )
-	exec > >(tee -a "${TMP_OUTPUT}") 2>&1
+    # redirect all output to screen and file
+    exec {OUT}>&1 {ERROR}>&2
+    # NOTE: Not preferred format but valid: exec &> >(tee -ia "${TMP_OUTPUT}" )
+    exec > >(tee -a "${TMP_OUTPUT}") 2>&1
 }
 
 
