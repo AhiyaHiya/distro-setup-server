@@ -5,7 +5,7 @@
 CHK_FAIL=0
 DO_SYNC=0
 
-EMAIL_ADDRESS_FROM="online@jaimerios.com"
+EMAIL_ADDRESS_FROM="ubuntusrv7@jaimerios.com"
 EMAIL_ADDRESS_TO="online@jaimerios.com"
 EMAIL_SUBJECT_PREFIX="(SnapRAID on $(hostname))"
 
