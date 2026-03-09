@@ -1,26 +1,134 @@
 #!/bin/bash
 
-# If needed, run `shellcheck snapraid-check.sh` to
-# make sure the syntax is fine.
+################################################################################
+#
+# SnapRAID Health Check and Sync Script
+#
+# Purpose:
+#   Automated health checking and synchronization of SnapRAID parity files.
+#   Performs DIFF → SYNC → CHECK → SCRUB operations with configurable thresholds
+#   and notifications.
+#
+# Prerequisites (must be installed on system):
+#   - snapraid          : SnapRAID parity tool
+#   - bash              : Shell interpreter with process substitution support
+#   - grep, sed, cut    : Text processing utilities
+#   - bc                : Calculator for floating-point math
+#   - mail              : Mail utility for email notifications (optional)
+#
+# Required Configuration:
+#   This script sources a settings file that defines all configuration variables.
+#   Default location: ./snapraid-check-settings.sh
+#   Custom location: Pass as first argument to script
+#
+#   Key configuration variables (from settings file):
+#   - SNAPRAID_BIN       : Path to snapraid binary (default: /usr/bin/snapraid)
+#   - SNAPRAID_CONF      : Path to snapraid config file (default: /etc/snapraid.conf)
+#   - SNAPRAID_LOG       : Path to snapraid log file (default: /var/log/snapraid.log)
+#   - DEL_THRESHOLD      : Max deleted files before blocking sync (default: 500)
+#   - UP_THRESHOLD       : Max updated files before blocking sync (default: 500)
+#   - SCRUB_PERCENT      : Percentage of array to scrub (0=disable, default: 5)
+#   - SCRUB_AGE          : Age in days for scrub check (default: 10)
+#   - PREHASH            : Enable pre-hash for data integrity (default: 1)
+#   - EMAIL_ADDRESS_TO   : Email for notifications (default: online@jaimerios.com)
+#   - SNAP_STATUS        : Run snapraid status command (default: 0)
+#
+# Usage:
+#
+#   1. Run with default settings file in same directory:
+#      ./snapraid-check.sh
+#
+#   2. Run with custom settings file:
+#      ./snapraid-check.sh /etc/snapraid-check/custom-settings.sh
+#
+#   3. Run in dry-run mode (preview actions without executing snapraid commands):
+#      ./snapraid-check.sh --dry-run
+#      ./snapraid-check.sh --dry-run /etc/snapraid-check/custom-settings.sh
+#
+#   4. Schedule with cron (runs daily at 2 AM):
+#      0 2 * * * /path/to/scripts/snapraid/snapraid-check.sh
+#
+#   5. Schedule with systemd timer (recommended):
+#      Create /etc/systemd/system/snapraid-check.service and .timer files
+#
+#   6. Manual execution with custom threshold (requires editing settings file):
+#      Edit snapraid-check-settings.sh, then run: ./snapraid-check.sh
+#
+# Output:
+#   - Console: Real-time progress of all operations
+#   - Log file: /tmp/snapRAID.out (or configured SNAPRAID_LOG_DIR)
+#   - System log: /var/log/snapraid.log (via mklog function)
+#   - Email: Notification to EMAIL_ADDRESS_TO on warnings/errors (if configured)
+#
+# Exit Codes:
+#   0 : Success - all operations completed
+#   1 : Error - configuration validation failed, or SnapRAID operation failed
+#
+# Workflow:
+#   1. Validate configuration (snapraid binary, config file, required commands)
+#   2. Check if SnapRAID is already running (prevent concurrent execution)
+#   3. [TOUCH] Fix files with zero sub-second timestamps
+#   4. [STATUS] Display array health information (optional)
+#   5. [DIFF] Compare current data with parity
+#   6. [SYNC] Update parity if safe (respects thresholds)
+#   7. [CHECK] Verify parity consistency with data (if sync ran)
+#   8. [SCRUB] Check for latent disk errors (if sync ran)
+#   9. Save logs and rotate old logs based on retention days
+#
+# Author: SnapRAID script (inspired by https://github.com/auanasgheps/snapraid-aio-script)
+# Version: 0.1.0
+#
+################################################################################
+
+# If needed, run `shellcheck snapraid-check.sh` to make sure the syntax is fine.
 
 set -euo pipefail
-
-# Source in this script was inspired by https://github.com/auanasgheps/snapraid-aio-script
 
 ##################################################################
 #  Script variables
 SNAPSCRIPTVERSION="0.1.0"
+DRY_RUN=0
+
+# Parse command-line arguments for --dry-run flag
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        *)
+            SETTINGS_FILE="$1"
+            shift
+            ;;
+    esac
+done
+
+# Ensure SETTINGS_FILE is set with default if needed
+: "${SETTINGS_FILE:=${CURRENT_DIR:-$(dirname "${0}")}/snapraid-check-settings.sh}"
+
+CURRENT_DIR=$(dirname "${0}")
 
 # Read SnapRAID version
 SNAPRAIDVERSION="$(snapraid -V | sed -e 's/snapraid v\(.*\)by.*/\1/')"
-
-CURRENT_DIR=$(dirname "${0}")
-SETTINGS_FILE=${1:-$CURRENT_DIR/snapraid-check-settings.sh}
 
 SYNC_MARKER="SYNC -"
 
 #shellcheck source=snapraid-check-settings.sh
 source "$SETTINGS_FILE"
+
+# Helper function to execute snapraid commands with dry-run support
+function snapraid_exec()
+{
+    local cmd="$@"
+    
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "[DRY-RUN] Would execute: $cmd"
+        return 0
+    else
+        eval "$cmd"
+        return $?
+    fi
+}
 
 # Validate configuration before starting
 function validate_config()
@@ -80,6 +188,14 @@ function main()
     echo "Running SnapRAID version $SNAPRAIDVERSION"
     echo "SnapRAID AIO Script version $SNAPSCRIPTVERSION"
     echo "Using configuration file: $SETTINGS_FILE"
+    
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "----------------------------------------"
+        echo "**DRY-RUN MODE ENABLED**"
+        echo "SnapRAID commands will be shown but NOT executed"
+        echo "----------------------------------------"
+    fi
+    
     echo "----------------------------------------"
     mklog "INFO: ----------------------------------------"
     mklog "INFO: SnapRAID Script Job started"
@@ -119,9 +235,11 @@ function main()
         echo "### SnapRAID STATUS [$(date)]"
         mklog "INFO: SnapRAID STATUS started"
         echo "```"
-        $SNAPRAID_BIN -c $SNAPRAID_CONF status
-        close_output_and_wait
-        output_to_file_screen
+        snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF status"
+        if [ "$DRY_RUN" -eq 0 ]; then
+            close_output_and_wait
+            output_to_file_screen
+        fi
         echo "```"
         echo "STATUS finished [$(date)]"
         mklog "INFO: SnapRAID STATUS finished"
@@ -131,16 +249,29 @@ function main()
     echo "### SnapRAID DIFF [$(date)]"
     mklog "INFO: SnapRAID DIFF started"
     echo "```"
-    $SNAPRAID_BIN -c $SNAPRAID_CONF diff
-    close_output_and_wait
-    output_to_file_screen
+    snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF diff"
+    if [ "$DRY_RUN" -eq 0 ]; then
+        close_output_and_wait
+        output_to_file_screen
+    fi
     echo "```"
     echo "DIFF finished [$(date)]"
     mklog "INFO: SnapRAID DIFF finished"
     JOBS_DONE="DIFF"
 
     # Get number of deleted, updated, and modified files...
-    get_counts
+    if [ "$DRY_RUN" -eq 0 ]; then
+        get_counts
+    else
+        # In dry-run mode, set dummy counts to show workflow
+        EQ_COUNT="0"
+        ADD_COUNT="0"
+        DEL_COUNT="0"
+        UPDATE_COUNT="0"
+        MOVE_COUNT="0"
+        COPY_COUNT="0"
+        echo "[DRY-RUN] Skipping file count parsing in dry-run mode"
+    fi
 
     # sanity check to make sure that we were able to get our counts from the
     # output of the DIFF job
@@ -161,9 +292,13 @@ function main()
     echo "**SUMMARY: Equal [$EQ_COUNT] - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]**"
     mklog "INFO: SUMMARY: Equal [$EQ_COUNT] - Added [$ADD_COUNT] - Deleted [$DEL_COUNT] - Moved [$MOVE_COUNT] - Copied [$COPY_COUNT] - Updated [$UPDATE_COUNT]"
 
-    # check if the conditions to run SYNC are met
-    # CHK 1 - if files have changed
-    if [ "$DEL_COUNT" -gt 0 ] || [ "$ADD_COUNT" -gt 0 ] || [ "$MOVE_COUNT" -gt 0 ] || [ "$COPY_COUNT" -gt 0 ] || [ "$UPDATE_COUNT" -gt 0 ]; then
+    # Check if the conditions to run SYNC are met in dry-run mode
+    if [ "$DRY_RUN" -eq 1 ]; then
+        # In dry-run mode, assume sync would be authorized
+        echo "[DRY-RUN] Assuming SYNC would be authorized based on default settings"
+        DO_SYNC=1
+    elif [ "$DEL_COUNT" -gt 0 ] || [ "$ADD_COUNT" -gt 0 ] || [ "$MOVE_COUNT" -gt 0 ] || [ "$COPY_COUNT" -gt 0 ] || [ "$UPDATE_COUNT" -gt 0 ]; then
+        # In normal mode, check if files have changed
         chk_del
         if [ "$CHK_FAIL" -eq 0 ]; then
             chk_updated
@@ -184,26 +319,34 @@ function main()
     echo "### SnapRAID SYNC [$(date)]"
     mklog "INFO: SnapRAID SYNC Job started"
     echo "\`\`\`"
+    
+    SYNC_CMD="$SNAPRAID_BIN -c $SNAPRAID_CONF"
     if [ "$PREHASH" -eq 1 ] && [ "$FORCE_ZERO" -eq 1 ]; then
-      $SNAPRAID_BIN -c $SNAPRAID_CONF -h --force-zero -q sync
+      SYNC_CMD="$SYNC_CMD -h --force-zero -q sync"
     elif [ "$PREHASH" -eq 1 ]; then
-      $SNAPRAID_BIN -c $SNAPRAID_CONF -h -q sync
+      SYNC_CMD="$SYNC_CMD -h -q sync"
     elif [ "$FORCE_ZERO" -eq 1 ]; then
-      $SNAPRAID_BIN -c $SNAPRAID_CONF --force-zero -q sync
+      SYNC_CMD="$SYNC_CMD --force-zero -q sync"
     else
-      $SNAPRAID_BIN -c $SNAPRAID_CONF -q sync
+      SYNC_CMD="$SYNC_CMD -q sync"
     fi
-    close_output_and_wait
-    output_to_file_screen
+    
+    snapraid_exec "$SYNC_CMD"
+    if [ "$DRY_RUN" -eq 0 ]; then
+        close_output_and_wait
+        output_to_file_screen
+    fi
     echo "\`\`\`"
     echo "SYNC finished [$(date)]"
     mklog "INFO: SnapRAID SYNC Job finished"
     JOBS_DONE="$JOBS_DONE + SYNC"
     # insert SYNC marker to 'Everything OK' or 'Nothing to do' string to
     # differentiate it from SCRUB job later
-    sed_me "
-      s/^Everything OK/${SYNC_MARKER} Everything OK/g;
-      s/^Nothing to do/${SYNC_MARKER} Nothing to do/g" "$TMP_OUTPUT"
+    if [ "$DRY_RUN" -eq 0 ]; then
+        sed_me "
+          s/^Everything OK/${SYNC_MARKER} Everything OK/g;
+          s/^Nothing to do/${SYNC_MARKER} Nothing to do/g" "$TMP_OUTPUT"
+    fi
     # Remove any warning flags if set previously. This is done in this step to
     # take care of scenarios when user has manually synced or restored deleted
     # files and we will have missed it in the checks above.
@@ -217,9 +360,11 @@ function main()
         echo "### SnapRAID CHECK [$(date)]"
         mklog "INFO: SnapRAID CHECK Job started"
         echo "```"
-        $SNAPRAID_BIN -c $SNAPRAID_CONF -q check
-        close_output_and_wait
-        output_to_file_screen
+        snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF -q check"
+        if [ "$DRY_RUN" -eq 0 ]; then
+            close_output_and_wait
+            output_to_file_screen
+        fi
         echo "```"
         echo "CHECK finished [$(date)]"
         mklog "INFO: SnapRAID CHECK Job finished"
@@ -245,9 +390,11 @@ function main()
         SCRUB_CMD="$SCRUB_CMD -q scrub"
         
         echo "```"
-        $SCRUB_CMD
-        close_output_and_wait
-        output_to_file_screen
+        snapraid_exec "$SCRUB_CMD"
+        if [ "$DRY_RUN" -eq 0 ]; then
+            close_output_and_wait
+            output_to_file_screen
+        fi
         echo "```"
         echo "SCRUB finished [$(date)]"
         mklog "INFO: SnapRAID SCRUB Job finished"
@@ -393,17 +540,23 @@ function chk_zero()
 {
     echo "### SnapRAID TOUCH [$(date)]"
     echo "Checking for zero sub-second files."
-    TIMESTATUS=$($SNAPRAID_BIN -c $SNAPRAID_CONF status | grep -E 'You have [1-9][0-9]* files with( a)? zero sub-second timestamp\.' | sed 's/^You have/Found/g')
-    if [ -n "$TIMESTATUS" ]; then
-        echo "$TIMESTATUS"
-        echo "Running TOUCH job to timestamp. [$(date)]"
-        echo "```"
-        $SNAPRAID_BIN -c $SNAPRAID_CONF touch
-        close_output_and_wait
-        output_to_file_screen
-        echo "```"
+    
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "[DRY-RUN] Would check: $SNAPRAID_BIN -c $SNAPRAID_CONF status"
+        echo "[DRY-RUN] (Skipping actual status check in dry-run mode)"
     else
-        echo "No zero sub-second timestamp files found."
+        TIMESTATUS=$($SNAPRAID_BIN -c $SNAPRAID_CONF status | grep -E 'You have [1-9][0-9]* files with( a)? zero sub-second timestamp\.' | sed 's/^You have/Found/g')
+        if [ -n "$TIMESTATUS" ]; then
+            echo "$TIMESTATUS"
+            echo "Running TOUCH job to timestamp. [$(date)]"
+            echo "```"
+            $SNAPRAID_BIN -c $SNAPRAID_CONF touch
+            close_output_and_wait
+            output_to_file_screen
+            echo "```"
+        else
+            echo "No zero sub-second timestamp files found."
+        fi
     fi
     echo "TOUCH finished [$(date)]"
 }
