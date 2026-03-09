@@ -82,7 +82,8 @@
 
 # If needed, run `shellcheck snapraid-check.sh` to make sure the syntax is fine.
 
-set -euo pipefail
+set -u          # catch unset variables
+set -o pipefail # catch hidden failures in | pipelines
 
 ##################################################################
 #  Script variables
@@ -120,7 +121,7 @@ source "$SETTINGS_FILE"
 function snapraid_exec()
 {
     local cmd="$@"
-    
+
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "[DRY-RUN] Would execute: $cmd"
         return 0
@@ -134,42 +135,42 @@ function snapraid_exec()
 function validate_config()
 {
     local errors=0
-    
+
     # Check if snapraid binary exists
     if [ ! -x "$SNAPRAID_BIN" ]; then
         echo "ERROR: SnapRAID binary not found or not executable: $SNAPRAID_BIN" >&2
         ((errors++))
     fi
-    
+
     # Check if config file exists
     if [ ! -f "$SNAPRAID_CONF" ]; then
         echo "ERROR: SnapRAID config file not found: $SNAPRAID_CONF" >&2
         ((errors++))
     fi
-    
+
     # Check for bc command availability
     if ! command -v bc &>/dev/null; then
         echo "ERROR: 'bc' command is required but not installed." >&2
         echo "Install it with: sudo apt install bc" >&2
         ((errors++))
     fi
-    
+
     # Validate numeric settings
     if ! [[ "$DEL_THRESHOLD" =~ ^[0-9]+$ ]]; then
         echo "ERROR: DEL_THRESHOLD must be a number, got: $DEL_THRESHOLD" >&2
         ((errors++))
     fi
-    
+
     if ! [[ "$UP_THRESHOLD" =~ ^[0-9]+$ ]]; then
         echo "ERROR: UP_THRESHOLD must be a number, got: $UP_THRESHOLD" >&2
         ((errors++))
     fi
-    
+
     if [ "$errors" -gt 0 ]; then
         echo "Configuration validation failed with $errors error(s)" >&2
         return 1
     fi
-    
+
     return 0
 }
 
@@ -188,14 +189,14 @@ function main()
     echo "Running SnapRAID version $SNAPRAIDVERSION"
     echo "SnapRAID AIO Script version $SNAPSCRIPTVERSION"
     echo "Using configuration file: $SETTINGS_FILE"
-    
+
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "----------------------------------------"
         echo "**DRY-RUN MODE ENABLED**"
         echo "SnapRAID commands will be shown but NOT executed"
         echo "----------------------------------------"
     fi
-    
+
     echo "----------------------------------------"
     mklog "INFO: ----------------------------------------"
     mklog "INFO: SnapRAID Script Job started"
@@ -234,13 +235,15 @@ function main()
     if [ "$SNAP_STATUS" -eq 1 ]; then
         echo "### SnapRAID STATUS [$(date)]"
         mklog "INFO: SnapRAID STATUS started"
-        echo "```"
-        snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF status"
-        if [ "$DRY_RUN" -eq 0 ]; then
-            close_output_and_wait
-            output_to_file_screen
-        fi
-        echo "```"
+
+echo "```"
+snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF status"
+if [ "$DRY_RUN" -eq 0 ]; then
+    close_output_and_wait
+    output_to_file_screen
+fi
+echo "```"
+
         echo "STATUS finished [$(date)]"
         mklog "INFO: SnapRAID STATUS finished"
     fi
@@ -248,13 +251,15 @@ function main()
     mklog "INFO: run the snapraid DIFF command"
     echo "### SnapRAID DIFF [$(date)]"
     mklog "INFO: SnapRAID DIFF started"
-    echo "```"
-    snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF diff"
-    if [ "$DRY_RUN" -eq 0 ]; then
-        close_output_and_wait
-        output_to_file_screen
-    fi
-    echo "```"
+
+echo "```"
+snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF diff"
+if [ "$DRY_RUN" -eq 0 ]; then
+    close_output_and_wait
+    output_to_file_screen
+fi
+echo "```"
+
     echo "DIFF finished [$(date)]"
     mklog "INFO: SnapRAID DIFF finished"
     JOBS_DONE="DIFF"
@@ -319,7 +324,7 @@ function main()
     echo "### SnapRAID SYNC [$(date)]"
     mklog "INFO: SnapRAID SYNC Job started"
     echo "\`\`\`"
-    
+
     SYNC_CMD="$SNAPRAID_BIN -c $SNAPRAID_CONF"
     if [ "$PREHASH" -eq 1 ] && [ "$FORCE_ZERO" -eq 1 ]; then
       SYNC_CMD="$SYNC_CMD -h --force-zero -q sync"
@@ -330,7 +335,7 @@ function main()
     else
       SYNC_CMD="$SYNC_CMD -q sync"
     fi
-    
+
     snapraid_exec "$SYNC_CMD"
     if [ "$DRY_RUN" -eq 0 ]; then
         close_output_and_wait
@@ -359,13 +364,15 @@ function main()
     if [ "$DO_SYNC" -eq 1 ]; then
         echo "### SnapRAID CHECK [$(date)]"
         mklog "INFO: SnapRAID CHECK Job started"
-        echo "```"
-        snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF -q check"
-        if [ "$DRY_RUN" -eq 0 ]; then
-            close_output_and_wait
-            output_to_file_screen
-        fi
-        echo "```"
+
+echo "```"
+snapraid_exec "$SNAPRAID_BIN -c $SNAPRAID_CONF -q check"
+if [ "$DRY_RUN" -eq 0 ]; then
+    close_output_and_wait
+    output_to_file_screen
+fi
+echo "```"
+
         echo "CHECK finished [$(date)]"
         mklog "INFO: SnapRAID CHECK Job finished"
         JOBS_DONE="$JOBS_DONE + CHECK"
@@ -375,27 +382,28 @@ function main()
     if [ "$DO_SYNC" -eq 1 ]; then
         echo "### SnapRAID SCRUB [$(date)]"
         mklog "INFO: SnapRAID SCRUB Job started"
-        
+
         SCRUB_CMD="$SNAPRAID_BIN -c $SNAPRAID_CONF"
-        
+
         # Add scrub parameters if configured
         if [ "$SCRUB_PERCENT" -gt 0 ]; then
             SCRUB_CMD="$SCRUB_CMD -p $SCRUB_PERCENT"
         fi
-        
+
         if [ "$SCRUB_AGE" -gt 0 ]; then
             SCRUB_CMD="$SCRUB_CMD -a $SCRUB_AGE"
         fi
-        
+
         SCRUB_CMD="$SCRUB_CMD -q scrub"
-        
-        echo "```"
-        snapraid_exec "$SCRUB_CMD"
-        if [ "$DRY_RUN" -eq 0 ]; then
-            close_output_and_wait
-            output_to_file_screen
-        fi
-        echo "```"
+
+echo "```"
+snapraid_exec "$SCRUB_CMD"
+if [ "$DRY_RUN" -eq 0 ]; then
+    close_output_and_wait
+    output_to_file_screen
+fi
+echo "```"
+
         echo "SCRUB finished [$(date)]"
         mklog "INFO: SnapRAID SCRUB Job finished"
         JOBS_DONE="$JOBS_DONE + SCRUB"
@@ -408,9 +416,9 @@ function main()
         echo "ERROR: Cannot create log directory: $SNAPRAID_LOG_DIR"
         mklog "WARN: Cannot create log directory: $SNAPRAID_LOG_DIR"
     }
-    
+
     find "$SNAPRAID_LOG_DIR"/SnapRAID-* -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
-    
+
     if ! cp "$TMP_OUTPUT" "$SNAPRAID_LOG_DIR"/SnapRAID-"$(date +"%Y_%m_%d-%H%M")".out; then
         mklog "WARN: Failed to copy log file to $SNAPRAID_LOG_DIR"
     fi
@@ -540,20 +548,44 @@ function chk_zero()
 {
     echo "### SnapRAID TOUCH [$(date)]"
     echo "Checking for zero sub-second files."
-    
+
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "[DRY-RUN] Would check: $SNAPRAID_BIN -c $SNAPRAID_CONF status"
         echo "[DRY-RUN] (Skipping actual status check in dry-run mode)"
     else
-        TIMESTATUS=$($SNAPRAID_BIN -c $SNAPRAID_CONF status | grep -E 'You have [1-9][0-9]* files with( a)? zero sub-second timestamp\.' | sed 's/^You have/Found/g')
+        echo "Running: $SNAPRAID_BIN -c $SNAPRAID_CONF status"
+
+        # Capture both stdout and stderr
+        local status_output
+        status_output=$($SNAPRAID_BIN -c "$SNAPRAID_CONF" status 2>&1)
+        local rc=$?
+
+        echo "$status_output"
+
+        if [ $rc -ne 0 ]; then
+            echo "ERROR: snapraid status failed with exit code $rc"
+            mklog "ERROR: snapraid status failed with exit code $rc"
+            # Optionally: exit 1 here, or just return and skip TOUCH
+            return 1
+        fi
+
+        # Now safe to parse — we know the command succeeded
+        TIMESTATUS=$(
+            echo "$status_output" |
+            grep -E 'You have [1-9][0-9]* files with( a)? zero sub-second timestamp\.|No file has a zero sub-second timestamp\.' |
+            sed 's/^You have/Found/g; s/^No file has/No files have/g'
+        )
+
         if [ -n "$TIMESTATUS" ]; then
             echo "$TIMESTATUS"
             echo "Running TOUCH job to timestamp. [$(date)]"
-            echo "```"
-            $SNAPRAID_BIN -c $SNAPRAID_CONF touch
-            close_output_and_wait
-            output_to_file_screen
-            echo "```"
+
+echo "```"
+"$SNAPRAID_BIN" -c "$SNAPRAID_CONF" touch
+close_output_and_wait
+output_to_file_screen
+echo "```"
+
         else
             echo "No zero sub-second timestamp files found."
         fi
@@ -572,21 +604,36 @@ function close_output_and_wait()
 
 function get_counts()
 {
-    EQ_COUNT=$(grep -w '^ \{1,\}[0-9]* equal' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-    ADD_COUNT=$(grep -w '^ \{1,\}[0-9]* added' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-    DEL_COUNT=$(grep -w '^ \{1,\}[0-9]* removed' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-    UPDATE_COUNT=$(grep -w '^ \{1,\}[0-9]* updated' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-    MOVE_COUNT=$(grep -w '^ \{1,\}[0-9]* moved' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-    COPY_COUNT=$(grep -w '^ \{1,\}[0-9]* copied' "$TMP_OUTPUT" | sed 's/^ *//g' | cut -d ' ' -f1)
-    # REST_COUNT=$(grep -w '^ \{1,\}[0-9]* restored' $TMP_OUTPUT | sed 's/^ *//g' | cut -d ' ' -f1)
-    
-    # Provide defaults if values are empty (in case parse fails)
-    EQ_COUNT="${EQ_COUNT:-0}"
-    ADD_COUNT="${ADD_COUNT:-0}"
-    DEL_COUNT="${DEL_COUNT:-0}"
-    UPDATE_COUNT="${UPDATE_COUNT:-0}"
-    MOVE_COUNT="${MOVE_COUNT:-0}"
-    COPY_COUNT="${COPY_COUNT:-0}"
+    local line
+
+    # Helper to extract number safely
+    extract_number() {
+        local pattern="$1"
+        line=$(grep -E "^[[:space:]]+[0-9]+[[:space:]]+${pattern}" "$TMP_OUTPUT" 2>/dev/null || true)
+        if [ -n "$line" ]; then
+            echo "$line" | awk '{print $1}' | tr -d '[:space:]'
+        else
+            echo "0"
+        fi
+    }
+
+    EQ_COUNT=$(extract_number "equal")
+    ADD_COUNT=$(extract_number "added")
+    DEL_COUNT=$(extract_number "removed")
+    UPDATE_COUNT=$(extract_number "updated")
+    MOVE_COUNT=$(extract_number "moved")
+    COPY_COUNT=$(extract_number "copied")
+
+    # Fallback (already good, but make explicit)
+    : "${EQ_COUNT:=0}"
+    : "${ADD_COUNT:=0}"
+    : "${DEL_COUNT:=0}"
+    : "${UPDATE_COUNT:=0}"
+    : "${MOVE_COUNT:=0}"
+    : "${COPY_COUNT:=0}"
+
+    # Optional: log what we actually found (great for debugging)
+    echo "Parsed counts → eq:$EQ_COUNT add:$ADD_COUNT del:$DEL_COUNT upd:$UPDATE_COUNT mov:$MOVE_COUNT cpy:$COPY_COUNT" >&2
 }
 
 # Sends important messages to syslog
@@ -707,18 +754,18 @@ function send_mail()
 {
     local body
     body=$(cat)
-    
+
     if [ -z "$EMAIL_ADDRESS_TO" ]; then
         mklog "INFO: Email address not configured, skipping notification"
         return 0
     fi
-    
+
     # Check if mail command exists
     if ! command -v mail &>/dev/null; then
         mklog "WARN: 'mail' command not found, cannot send email. Install mailutils or similar."
         return 1
     fi
-    
+
     # Send email
     if echo "$body" | mail -s "$SUBJECT" -r "$EMAIL_ADDRESS_FROM" "$EMAIL_ADDRESS_TO"; then
         mklog "INFO: Email notification sent to $EMAIL_ADDRESS_TO"
