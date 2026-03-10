@@ -1,0 +1,27 @@
+version: '3'
+services:
+  makemkv:
+    image: jlesage/makemkv:latest
+    container_name: makemkv-inspect
+    ports:
+      - "5800:5800"
+    volumes:
+      - ~/makemkv-config:/config:rw
+      - ~/makemkv-output:/output:rw
+    devices:
+      - /dev/sr0:/dev/sr0
+      - /dev/sg6:/dev/sg6
+    environment:
+      - AUTO_DISC_RIPPER=0
+      - MAKEMKV_KEY=M-utfFdge_NBD1PgOT9QgExLIXZI6oEQADg42aE109AoNh6NvPakgXq5mMDxGO9LKFH@
+    restart: unless-stopped
+
+  mkvtoolnix:
+    image: jlesage/mkvtoolnix:latest
+    container_name: mkvtoolnix
+    ports:
+      - "5801:5800"                    # Different port so it doesn't conflict with MakeMKV's web UI
+    volumes:
+      - ~/mkvtoolnix-config:/config:rw
+      - ~/makemkv-output:/storage:rw   # Mount the same output dir as MakeMKV
+    restart: unless-stopped

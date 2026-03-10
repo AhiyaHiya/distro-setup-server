@@ -1,0 +1,21 @@
+
+services:
+  server:
+    image: docker.gitea.com/gitea:1.24.7
+    container_name: gitea
+    environment:
+      - USER_UID=1000
+      - USER_GID=988
+      - GITEA__database__DB_TYPE=sqlite3
+    restart: always
+    volumes:
+      - giteavolume:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /home/git/.ssh:/home/git/.ssh:ro
+    ports:
+      - "3000:3000"  # Web UI
+      - "222:22"     # SSH (avoids conflict with host SSH on 22)
+
+volumes:
+  giteavolume:
