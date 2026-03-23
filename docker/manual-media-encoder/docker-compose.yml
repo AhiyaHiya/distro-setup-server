@@ -5,8 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: manual_media_encoder:latest        # Fixed: underscore
-    container_name: manual_media_encoder      # Fixed: consistent
+    image: manual-media-encoder:latest        # Fixed: underscore
+    container_name: manual-media-encoder      # Fixed: consistent
     user: "1000:1000"                         # ADD: Prevent root-owned files (adjust UID/GID)
     devices:
       - /dev/sr0:/dev/sr0
