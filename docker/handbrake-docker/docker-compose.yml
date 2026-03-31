@@ -1,0 +1,14 @@
+services:
+  handbrake:
+    image: jlesage/handbrake
+    container_name: handbrake
+    ports:
+      - "5801:5800"
+    volumes:
+      - "/docker/appdata/handbrake:/config:rw"
+      - "/home/user:/storage:ro"
+      - "/home/jaimerios/Docker/HandBrake/watch:/watch:rw"
+      - "/home/jaimerios/Docker/HandBrake/output:/output:rw"
+      - "/home/jaimerios/Docker/makemkv/output:/makemkv-output:rw"
+      - "/mnt/1TbSSD/samba/users/family/Media/Entertainment/MediaRips:/mediarips-output:rw"
+    restart: no
