@@ -1,7 +1,7 @@
 #!/bin/bash
 
-pipx install yt-dlp==2025.10.14 --dry-run
-pipx install yt-dlp==2025.10.14
+# pipx install yt-dlp==2026.02.04 --dry-run
+pipx install yt-dlp==2026.02.04
 yt-dlp --version
 
 # For challenge questions, DENO has to be installed too
