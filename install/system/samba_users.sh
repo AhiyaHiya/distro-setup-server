@@ -8,11 +8,13 @@ function add_group_and_users()
     printf "Adding lucas and zachary no login accounts\n"
     sudo adduser --system --no-create-home --shell /usr/sbin/nologin zachary
     sudo adduser --system --no-create-home --shell /usr/sbin/nologin lucas
+    sudo adduser --system --no-create-home --shell /usr/sbin/nologin veronica
 
     printf "Adding users to family group\n"
     sudo usermod -aG family jaimerios
     sudo usermod -aG family zachary
     sudo usermod -aG family lucas
+    sudo usermod -aG family veronica
 
     printf "Printing users for group family\n"
     getent group family
@@ -38,6 +40,7 @@ function set_passwords()
 {
     sudo smbpasswd -a zachary
     sudo smbpasswd -a lucas
+    sudo smbpasswd -a veronica
 }
 
 function enable_users()
