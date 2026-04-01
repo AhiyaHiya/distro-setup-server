@@ -10,5 +10,7 @@ services:
       - "/home/jaimerios/Docker/HandBrake/watch:/watch:rw"
       - "/home/jaimerios/Docker/HandBrake/output:/output:rw"
       - "/home/jaimerios/Docker/makemkv/output:/makemkv-output:rw"
-      - "/mnt/1TbSSD/samba/users/family/Media/Entertainment/MediaRips:/mediarips-output:rw"
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri/card1:/dev/dri/card1
     restart: no
